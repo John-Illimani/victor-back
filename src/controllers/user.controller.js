@@ -1,0 +1,285 @@
+import bcrypt from "bcryptjs";
+import { pool } from "../database/database.js";
+
+// READ: Obtener usuarios con JOIN a Unidades Educativas
+export const getUsers = async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        u.id, 
+        u.username, 
+        u.correo, 
+        u.nombre, 
+        u.apellido, 
+        u.ci, 
+        u.telefono,
+        u.rol, 
+        u.esfm_ua,
+        u.especialidad,
+        u.item_docente,
+        u.unidad_educativa_id,
+        ue.nombre AS unidad_educativa_nombre,
+        u.creado_en 
+      FROM usuarios u
+      LEFT JOIN unidades_educativas ue ON u.unidad_educativa_id = ue.id
+      ORDER BY u.creado_en DESC
+    `;
+    const result = await pool.query(query);
+    return res.json(result.rows);
+  } catch (error) {
+    console.error("Error al obtener usuarios:", error);
+    return res.status(500).json({ 
+      message: "Error al obtener la lista de usuarios.", 
+      error: error.message 
+    });
+  }
+};
+
+// CREATE: Crear usuario con hash automático de clave por CI
+export const createUser = async (req, res) => {
+  const { 
+    username, 
+    correo, 
+    password, 
+    nombre, 
+    apellido, 
+    ci, 
+    telefono, 
+    rol, 
+    esfm_ua, 
+    especialidad, 
+    item_docente, 
+    unidad_educativa_id 
+  } = req.body;
+
+  if (!username || !correo || !nombre || !apellido || !ci) {
+    return res.status(400).json({ message: "Usuario, correo, nombre, apellido y C.I. son requeridos." });
+  }
+
+  try {
+    // Si no se envía contraseña, se asigna el C.I. por defecto
+    const rawPassword = password || ci;
+    const hashedPassword = await bcrypt.hash(rawPassword, 10);
+
+    const query = `
+      INSERT INTO usuarios (
+        username, correo, password_hash, rol, nombre, apellido, ci, 
+        telefono, esfm_ua, especialidad, item_docente, unidad_educativa_id
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      RETURNING id, username, correo, rol, nombre, apellido, ci, telefono, esfm_ua, especialidad, item_docente, unidad_educativa_id, creado_en
+    `;
+    const values = [
+      username,
+      correo,
+      hashedPassword,
+      rol || "ESTUDIANTE",
+      nombre,
+      apellido,
+      ci,
+      telefono || null,
+      esfm_ua || "ESFM/UA - El Alto",
+      especialidad || null,
+      item_docente || null,
+      unidad_educativa_id || null
+    ];
+
+    const result = await pool.query(query, values);
+
+    return res.status(201).json({ message: "Usuario creado exitosamente.", user: result.rows[0] });
+  } catch (error) {
+    console.error("Error al crear usuario:", error);
+    if (error.code === "23505") {
+      return res.status(400).json({ message: "El usuario, correo electrónico o C.I. ya se encuentra registrado." });
+    }
+    return res.status(500).json({ message: "Error al registrar el usuario.", error: error.message });
+  }
+};
+
+// UPDATE: Editar usuario
+export const updateUser = async (req, res) => {
+  const { id } = req.params;
+  const { 
+    username, 
+    correo, 
+    password, 
+    nombre, 
+    apellido, 
+    ci, 
+    telefono, 
+    rol, 
+    esfm_ua, 
+    especialidad, 
+    item_docente, 
+    unidad_educativa_id 
+  } = req.body;
+
+  try {
+    let query = '';
+    let values = [];
+
+    if (password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      query = `
+        UPDATE usuarios 
+        SET username = $1, correo = $2, password_hash = $3, nombre = $4, apellido = $5, 
+            ci = $6, telefono = $7, rol = $8, esfm_ua = $9, especialidad = $10, 
+            item_docente = $11, unidad_educativa_id = $12
+        WHERE id = $13
+        RETURNING id, username, correo, nombre, apellido, ci, rol, esfm_ua, especialidad, item_docente, unidad_educativa_id
+      `;
+      values = [
+        username, correo, hashedPassword, nombre, apellido, ci, 
+        telefono || null, rol, esfm_ua, especialidad || null, 
+        item_docente || null, unidad_educativa_id || null, id
+      ];
+    } else {
+      query = `
+        UPDATE usuarios 
+        SET username = $1, correo = $2, nombre = $3, apellido = $4, ci = $5, 
+            telefono = $6, rol = $7, esfm_ua = $8, especialidad = $9, 
+            item_docente = $10, unidad_educativa_id = $11
+        WHERE id = $12
+        RETURNING id, username, correo, nombre, apellido, ci, rol, esfm_ua, especialidad, item_docente, unidad_educativa_id
+      `;
+      values = [
+        username, correo, nombre, apellido, ci, 
+        telefono || null, rol, esfm_ua, especialidad || null, 
+        item_docente || null, unidad_educativa_id || null, id
+      ];
+    }
+
+    const result = await pool.query(query, values);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Usuario no encontrado." });
+    }
+
+    return res.json({ message: "Usuario actualizado correctamente.", user: result.rows[0] });
+  } catch (error) {
+    console.error("Error al actualizar usuario:", error);
+    if (error.code === "23505") {
+      return res.status(400).json({ message: "El usuario, correo electrónico o C.I. ya está en uso." });
+    }
+    return res.status(500).json({ message: "Error al actualizar usuario.", error: error.message });
+  }
+};
+
+// DELETE: Eliminar usuario individual
+export const deleteUser = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const query = `DELETE FROM usuarios WHERE id = $1 RETURNING id`;
+    const result = await pool.query(query, [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Usuario no encontrado." });
+    }
+
+    return res.json({ message: "Usuario eliminado correctamente." });
+  } catch (error) {
+    console.error("Error al eliminar usuario:", error);
+    if (error.code === '23503') {
+      return res.status(400).json({ message: "No se puede eliminar el usuario porque está vinculado a registros o evaluaciones activas." });
+    }
+    return res.status(500).json({ message: "Error al eliminar usuario.", error: error.message });
+  }
+};
+
+// DELETE BATCH: Eliminar lote por arreglo de UUIDs
+export const deleteMultipleUsers = async (req, res) => {
+  const { ids } = req.body;
+
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ message: "Se requiere una lista válida de IDs (UUID) para eliminar." });
+  }
+
+  try {
+    const query = `DELETE FROM usuarios WHERE id = ANY($1::uuid[]) RETURNING id`;
+    const result = await pool.query(query, [ids]);
+
+    return res.json({ 
+      message: `${result.rowCount} usuarios fueron eliminados correctamente.`,
+      deletedIds: result.rows.map(r => r.id)
+    });
+  } catch (error) {
+    console.error("Error al eliminar usuarios en lote:", error);
+    return res.status(500).json({ message: "Error al eliminar la lista de usuarios.", error: error.message });
+  }
+};
+
+
+
+// IMPORTACIÓN EN LOTE (EXCEL)
+export const importBatchUsers = async (req, res) => {
+  const { usuarios } = req.body;
+
+  if (!usuarios || !Array.isArray(usuarios) || usuarios.length === 0) {
+    return res.status(400).json({ message: "Se requiere un arreglo válido de usuarios para importar." });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    let insertados = 0;
+
+    for (const u of usuarios) {
+      const rawPassword = u.password || u.ci;
+      const hashedPassword = await bcrypt.hash(rawPassword, 10);
+
+      const query = `
+        INSERT INTO usuarios (
+          username, correo, password_hash, rol, nombre, apellido, ci, 
+          telefono, esfm_ua, especialidad, item_docente, genero, modalidad_ingreso, ano_formacion
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        ON CONFLICT (ci) DO UPDATE SET
+          username = EXCLUDED.username,
+          nombre = EXCLUDED.nombre,
+          apellido = EXCLUDED.apellido,
+          correo = EXCLUDED.correo,
+          rol = EXCLUDED.rol,
+          especialidad = EXCLUDED.especialidad,
+          genero = EXCLUDED.genero,
+          modalidad_ingreso = EXCLUDED.modalidad_ingreso,
+          ano_formacion = EXCLUDED.ano_formacion
+      `;
+
+      const values = [
+        u.username || `${u.nombre.toLowerCase()}${u.ci}`,
+        u.correo || `${u.ci}@esfm.edu.bo`,
+        hashedPassword,
+        u.rol || "ESTUDIANTE",
+        u.nombre,
+        u.apellido,
+        u.ci,
+        u.telefono || null,
+        u.esfm_ua || "ESFM/UA - El Alto",
+        u.especialidad || null,
+        u.item_docente || u.codigo || null,
+        u.genero || null,
+        u.modalidad_ingreso || null,
+        u.ano_formacion || null
+      ];
+
+      await client.query(query, values);
+      insertados++;
+    }
+
+    await client.query('COMMIT');
+
+    return res.json({
+      message: `Se importaron y procesaron ${insertados} usuarios exitosamente.`,
+      count: insertados
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error("Error en la importación en lote:", error);
+    return res.status(500).json({ message: "Error al procesar la importación masiva.", error: error.message });
+  } finally {
+    client.release();
+  }
+};
