@@ -7,6 +7,10 @@ import { PORT } from "./config.js";
 // Importación de rutas oficiales del sistema IEPC-PEC (ESFM/UA)
 import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
+import estudiantesRoutes from "./routes/student.routes.js";
+import docenteAcompañanteRoutes from "./routes/teacher.routes.js";
+import docenteGuiaRoutes from "./routes/guide.routes.js";
+import fichaRoutes from "./routes/ficha.routes.js";
 
 
 
@@ -32,6 +36,10 @@ app.use(express.urlencoded({ limit: "100mb", extended: true, parameterLimit: 100
 // 4. Registro de Rutas API (Prefijo /api)
 app.use("/api", authRoutes);
 app.use("/api", userRoutes);
+app.use("/api", estudiantesRoutes);
+app.use("/api", docenteAcompañanteRoutes);
+app.use("/api", docenteGuiaRoutes);
+app.use("/api", fichaRoutes);
 
 
 

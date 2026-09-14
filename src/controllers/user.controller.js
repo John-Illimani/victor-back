@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { pool } from "../database/database.js";
 
-// READ: Obtener usuarios con JOIN a Unidades Educativas
+// READ: Obtener usuarios con JOIN a Unidades Educativas e incluir el ESTADO
 export const getUsers = async (req, res) => {
   try {
     const query = `
@@ -14,6 +14,7 @@ export const getUsers = async (req, res) => {
         u.ci, 
         u.telefono,
         u.rol, 
+        u.estado,
         u.esfm_ua,
         u.especialidad,
         u.item_docente,
@@ -35,7 +36,7 @@ export const getUsers = async (req, res) => {
   }
 };
 
-// CREATE: Crear usuario con hash automático de clave por CI
+// CREATE: Crear usuario incluyendo el ESTADO
 export const createUser = async (req, res) => {
   const { 
     username, 
@@ -46,34 +47,36 @@ export const createUser = async (req, res) => {
     ci, 
     telefono, 
     rol, 
+    estado,
     esfm_ua, 
     especialidad, 
     item_docente, 
     unidad_educativa_id 
   } = req.body;
 
-  if (!username || !correo || !nombre || !apellido || !ci) {
-    return res.status(400).json({ message: "Usuario, correo, nombre, apellido y C.I. son requeridos." });
+  if (!username || !nombre || !apellido || !ci) {
+    return res.status(400).json({ message: "Nombre de usuario, nombre, apellido y C.I. son requeridos." });
   }
 
   try {
-    // Si no se envía contraseña, se asigna el C.I. por defecto
-    const rawPassword = password || ci;
+    const rawPassword = password || `${ci}*`;
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
+    const generatedEmail = correo || `${ci}@${rol === 'ESTUDIANTE' ? 'est.' : ''}esfm.edu.bo`;
 
     const query = `
       INSERT INTO usuarios (
-        username, correo, password_hash, rol, nombre, apellido, ci, 
+        username, correo, password_hash, rol, estado, nombre, apellido, ci, 
         telefono, esfm_ua, especialidad, item_docente, unidad_educativa_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-      RETURNING id, username, correo, rol, nombre, apellido, ci, telefono, esfm_ua, especialidad, item_docente, unidad_educativa_id, creado_en
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      RETURNING id, username, correo, rol, estado, nombre, apellido, ci, telefono, esfm_ua, especialidad, item_docente, unidad_educativa_id, creado_en
     `;
     const values = [
       username,
-      correo,
+      generatedEmail,
       hashedPassword,
       rol || "ESTUDIANTE",
+      estado || "ACTIVO",
       nombre,
       apellido,
       ci,
@@ -96,7 +99,7 @@ export const createUser = async (req, res) => {
   }
 };
 
-// UPDATE: Editar usuario
+// UPDATE: Editar usuario incluyendo el ESTADO
 export const updateUser = async (req, res) => {
   const { id } = req.params;
   const { 
@@ -108,6 +111,7 @@ export const updateUser = async (req, res) => {
     ci, 
     telefono, 
     rol, 
+    estado,
     esfm_ua, 
     especialidad, 
     item_docente, 
@@ -115,36 +119,38 @@ export const updateUser = async (req, res) => {
   } = req.body;
 
   try {
+    const generatedEmail = correo || `${ci}@${rol === 'ESTUDIANTE' ? 'est.' : ''}esfm.edu.bo`;
+
     let query = '';
     let values = [];
 
-    if (password) {
+    if (password && password.trim() !== '') {
       const hashedPassword = await bcrypt.hash(password, 10);
       query = `
         UPDATE usuarios 
         SET username = $1, correo = $2, password_hash = $3, nombre = $4, apellido = $5, 
-            ci = $6, telefono = $7, rol = $8, esfm_ua = $9, especialidad = $10, 
-            item_docente = $11, unidad_educativa_id = $12
-        WHERE id = $13
-        RETURNING id, username, correo, nombre, apellido, ci, rol, esfm_ua, especialidad, item_docente, unidad_educativa_id
+            ci = $6, telefono = $7, rol = $8, estado = $9, esfm_ua = $10, especialidad = $11, 
+            item_docente = $12, unidad_educativa_id = $13
+        WHERE id = $14
+        RETURNING id, username, correo, nombre, apellido, ci, rol, estado, esfm_ua, especialidad, item_docente, unidad_educativa_id
       `;
       values = [
-        username, correo, hashedPassword, nombre, apellido, ci, 
-        telefono || null, rol, esfm_ua, especialidad || null, 
+        username, generatedEmail, hashedPassword, nombre, apellido, ci, 
+        telefono || null, rol, estado || 'ACTIVO', esfm_ua, especialidad || null, 
         item_docente || null, unidad_educativa_id || null, id
       ];
     } else {
       query = `
         UPDATE usuarios 
         SET username = $1, correo = $2, nombre = $3, apellido = $4, ci = $5, 
-            telefono = $6, rol = $7, esfm_ua = $8, especialidad = $9, 
-            item_docente = $10, unidad_educativa_id = $11
-        WHERE id = $12
-        RETURNING id, username, correo, nombre, apellido, ci, rol, esfm_ua, especialidad, item_docente, unidad_educativa_id
+            telefono = $6, rol = $7, estado = $8, esfm_ua = $9, especialidad = $10, 
+            item_docente = $11, unidad_educativa_id = $12
+        WHERE id = $13
+        RETURNING id, username, correo, nombre, apellido, ci, rol, estado, esfm_ua, especialidad, item_docente, unidad_educativa_id
       `;
       values = [
-        username, correo, nombre, apellido, ci, 
-        telefono || null, rol, esfm_ua, especialidad || null, 
+        username, generatedEmail, nombre, apellido, ci, 
+        telefono || null, rol, estado || 'ACTIVO', esfm_ua, especialidad || null, 
         item_docente || null, unidad_educativa_id || null, id
       ];
     }
@@ -159,9 +165,41 @@ export const updateUser = async (req, res) => {
   } catch (error) {
     console.error("Error al actualizar usuario:", error);
     if (error.code === "23505") {
-      return res.status(400).json({ message: "El usuario, correo electrónico o C.I. ya está en uso." });
+      return res.status(400).json({ message: "El nombre de usuario, correo o C.I. ya está en uso." });
     }
     return res.status(500).json({ message: "Error al actualizar usuario.", error: error.message });
+  }
+};
+
+// TOGGLE STATUS: Activar / Desactivar usuario
+export const toggleUserStatus = async (req, res) => {
+  const { id } = req.params;
+  const { estado } = req.body; // 'ACTIVO' o 'INACTIVO'
+
+  if (!['ACTIVO', 'INACTIVO'].includes(estado)) {
+    return res.status(400).json({ message: "El estado proporcionado debe ser ACTIVO o INACTIVO." });
+  }
+
+  try {
+    const query = `
+      UPDATE usuarios 
+      SET estado = $1 
+      WHERE id = $2 
+      RETURNING id, username, estado
+    `;
+    const result = await pool.query(query, [estado, id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Usuario no encontrado." });
+    }
+
+    return res.json({ 
+      message: `El estado del usuario ${result.rows[0].username} cambió a ${estado}.`, 
+      user: result.rows[0] 
+    });
+  } catch (error) {
+    console.error("Error al cambiar estado del usuario:", error);
+    return res.status(500).json({ message: "Error al cambiar el estado del usuario.", error: error.message });
   }
 };
 
@@ -209,8 +247,6 @@ export const deleteMultipleUsers = async (req, res) => {
   }
 };
 
-
-
 // IMPORTACIÓN EN LOTE (EXCEL)
 export const importBatchUsers = async (req, res) => {
   const { usuarios } = req.body;
@@ -227,21 +263,25 @@ export const importBatchUsers = async (req, res) => {
     let insertados = 0;
 
     for (const u of usuarios) {
-      const rawPassword = u.password || u.ci;
+      const rawPassword = u.password || `${u.ci}*`;
       const hashedPassword = await bcrypt.hash(rawPassword, 10);
+      const primerNombre = (u.nombre || '').trim().split(' ')[0].toLowerCase();
+      const generatedUsername = u.username || `${primerNombre}_${u.ci}`;
+      const generatedEmail = u.correo || `${u.ci}@${u.rol === 'ESTUDIANTE' ? 'est.' : ''}esfm.edu.bo`;
 
       const query = `
         INSERT INTO usuarios (
-          username, correo, password_hash, rol, nombre, apellido, ci, 
+          username, correo, password_hash, rol, estado, nombre, apellido, ci, 
           telefono, esfm_ua, especialidad, item_docente, genero, modalidad_ingreso, ano_formacion
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         ON CONFLICT (ci) DO UPDATE SET
           username = EXCLUDED.username,
           nombre = EXCLUDED.nombre,
           apellido = EXCLUDED.apellido,
           correo = EXCLUDED.correo,
           rol = EXCLUDED.rol,
+          estado = EXCLUDED.estado,
           especialidad = EXCLUDED.especialidad,
           genero = EXCLUDED.genero,
           modalidad_ingreso = EXCLUDED.modalidad_ingreso,
@@ -249,10 +289,11 @@ export const importBatchUsers = async (req, res) => {
       `;
 
       const values = [
-        u.username || `${u.nombre.toLowerCase()}${u.ci}`,
-        u.correo || `${u.ci}@esfm.edu.bo`,
+        generatedUsername,
+        generatedEmail,
         hashedPassword,
         u.rol || "ESTUDIANTE",
+        u.estado || "ACTIVO",
         u.nombre,
         u.apellido,
         u.ci,
