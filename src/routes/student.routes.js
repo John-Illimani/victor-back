@@ -1,12 +1,12 @@
 import { Router } from "express";
-import { 
-  getStudents, 
-  createStudent, 
-  updateStudent, 
-  toggleStudentStatus, 
-  deleteStudent, 
-  deleteMultipleStudents, 
-  importBatchStudents 
+import {
+  getStudents,
+  createStudent,
+  updateStudent,
+  toggleStudentStatus,
+  deleteStudent,
+  deleteMultipleStudents,
+  importBatchStudents
 } from "../controllers/student.controller.js";
 import { verifyToken } from "../middlewares/auth.middleware.js";
 

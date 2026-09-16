@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { pool } from "../database/database.js";
 
-// 1. OBTENER ESTUDIANTES CON SUS DOCENTES ASIGNADOS Y UNIDAD EDUCATIVA
+// 1. OBTENER ESTUDIANTES CON DOCENTE ACOMPAÑANTE ASIGNADO
 export const getStudents = async (req, res) => {
   try {
     const query = `
@@ -22,17 +22,14 @@ export const getStudents = async (req, res) => {
         u.ano_formacion,
         u.unidad_educativa_id,
         ue.nombre AS unidad_educativa_nombre,
-        ec.docente_acompanante_id,
-        da.nombre AS da_nombre, da.apellido AS da_apellido,
-        ec.docente_guia_id,
-        dg.nombre AS dg_nombre, dg.apellido AS dg_apellido,
+        ade.docente_id AS docente_acompanante_id,
+        da.nombre AS da_nombre, 
+        da.apellido AS da_apellido,
         u.creado_en 
       FROM usuarios u
       LEFT JOIN unidades_educativas ue ON u.unidad_educativa_id = ue.id
-      LEFT JOIN integrantes_equipo ie ON u.id = ie.estudiante_id
-      LEFT JOIN equipos_comunitarios ec ON ie.equipo_id = ec.id
-      LEFT JOIN usuarios da ON ec.docente_acompanante_id = da.id
-      LEFT JOIN usuarios dg ON ec.docente_guia_id = dg.id
+      LEFT JOIN asignaciones_docente_estudiante ade ON u.id = ade.estudiante_id
+      LEFT JOIN usuarios da ON ade.docente_id = da.id AND da.rol = 'DOCENTE_ACOMPANANTE'
       WHERE u.rol = 'ESTUDIANTE'
       ORDER BY u.creado_en DESC
     `;
@@ -46,9 +43,17 @@ export const getStudents = async (req, res) => {
 
 // 2. CREAR ESTUDIANTE INDIVIDUAL
 export const createStudent = async (req, res) => {
-  const { username, password, nombre, nombres, apellido, apellidos, ci, telefono, estado, esfm_ua, especialidad, genero, modalidad_ingreso, ano_formacion, unidad_educativa_id } = req.body;
+  const { 
+    username, password, nombre, nombres, apellido, apellidos, ci, telefono, estado, 
+    esfm_ua, especialidad, genero, modalidad_ingreso, ano_formacion, unidad_educativa_id,
+    docente_acompanante_id
+  } = req.body;
+
+  const client = await pool.connect();
 
   try {
+    await client.query('BEGIN');
+
     const finalNombre = (nombre || nombres || '').trim();
     const finalApellido = (apellido || apellidos || '').trim();
     const finalCi = (ci || '').trim();
@@ -59,7 +64,7 @@ export const createStudent = async (req, res) => {
     const generatedUsername = username || `${primerNombre}_${finalCi}`;
     const generatedEmail = `${finalCi}@est.esfm.edu.bo`;
 
-    const query = `
+    const queryUser = `
       INSERT INTO usuarios (
         username, correo, password_hash, rol, estado, nombre, apellido, ci, 
         telefono, esfm_ua, especialidad, genero, modalidad_ingreso, ano_formacion, unidad_educativa_id
@@ -68,27 +73,42 @@ export const createStudent = async (req, res) => {
       RETURNING id, username, nombre, apellido, ci, rol, estado
     `;
 
-    const values = [
+    const valuesUser = [
       generatedUsername, generatedEmail, hashedPassword, estado || 'ACTIVO', finalNombre, finalApellido, finalCi, 
       telefono || null, esfm_ua || "ESFM/UA - El Alto", especialidad || null, genero || null, 
       modalidad_ingreso || null, ano_formacion || null, unidad_educativa_id || null
     ];
 
-    const result = await pool.query(query, values);
-    return res.status(201).json({ message: "Estudiante registrado correctamente.", student: result.rows[0] });
+    const resultUser = await client.query(queryUser, valuesUser);
+    const newStudentId = resultUser.rows[0].id;
+
+    // Asignar docente si viene especificado
+    if (docente_acompanante_id) {
+      await client.query(`
+        INSERT INTO asignaciones_docente_estudiante (docente_id, estudiante_id, gestion)
+        VALUES ($1::uuid, $2::uuid, '2026')
+        ON CONFLICT (docente_id, estudiante_id, gestion) DO NOTHING
+      `, [docente_acompanante_id, newStudentId]);
+    }
+
+    await client.query('COMMIT');
+    return res.status(201).json({ message: "Estudiante registrado correctamente.", student: resultUser.rows[0] });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error("Error al registrar estudiante:", error);
     return res.status(500).json({ message: "Error al registrar estudiante.", error: error.message });
+  } finally {
+    client.release();
   }
 };
 
-// 3. ACTUALIZAR ESTUDIANTE (CON ASIGNACIÓN DE TUTORES/EQUIPOS)
+// 3. ACTUALIZAR ESTUDIANTE Y SU ASIGNACIÓN
 export const updateStudent = async (req, res) => {
   const { id } = req.params;
   const { 
     username, password, nombre, nombres, apellido, apellidos, ci, telefono, estado, 
     esfm_ua, especialidad, genero, modalidad_ingreso, ano_formacion, 
-    unidad_educativa_id, docente_acompanante_id, docente_guia_id 
+    unidad_educativa_id, docente_acompanante_id 
   } = req.body;
 
   const client = await pool.connect();
@@ -128,28 +148,13 @@ export const updateStudent = async (req, res) => {
       throw new Error("Estudiante no encontrado.");
     }
 
-    // GESTIÓN DE EQUIPO COMUNITARIO
-    if (docente_acompanante_id || docente_guia_id) {
-      const checkTeam = await client.query(`SELECT equipo_id FROM integrantes_equipo WHERE estudiante_id = $1`, [id]);
-      
-      if (checkTeam.rowCount > 0) {
-        const equipoId = checkTeam.rows[0].equipo_id;
-        await client.query(
-          `UPDATE equipos_comunitarios SET docente_acompanante_id = $1, docente_guia_id = $2 WHERE id = $3`,
-          [docente_acompanante_id || null, docente_guia_id || null, equipoId]
-        );
-      } else {
-        const codigoEquipo = `EQ-2026-${finalCi.substring(0, 4)}`;
-        const newTeam = await client.query(
-          `INSERT INTO equipos_comunitarios (codigo_equipo, ano_formacion, docente_acompanante_id, docente_guia_id) 
-           VALUES ($1, $2, $3, $4) RETURNING id`,
-          [codigoEquipo, ano_formacion || '1er Año', docente_acompanante_id || null, docente_guia_id || null]
-        );
-        await client.query(
-          `INSERT INTO integrantes_equipo (equipo_id, estudiante_id) VALUES ($1, $2)`,
-          [newTeam.rows[0].id, id]
-        );
-      }
+    // Actualizar asignación de docente acompañante
+    if (docente_acompanante_id) {
+      await client.query(`DELETE FROM asignaciones_docente_estudiante WHERE estudiante_id = $1::uuid`, [id]);
+      await client.query(`
+        INSERT INTO asignaciones_docente_estudiante (docente_id, estudiante_id, gestion)
+        VALUES ($1::uuid, $2::uuid, '2026')
+      `, [docente_acompanante_id, id]);
     }
 
     await client.query('COMMIT');
