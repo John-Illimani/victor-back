@@ -2,10 +2,11 @@ import bcrypt from "bcryptjs";
 import { pool } from "../database/database.js";
 
 // 1. OBTENER ESTUDIANTES CON DOCENTE ACOMPAÑANTE ASIGNADO
+// OBTENER ESTUDIANTES DE GESTIONES ACTIVAS 
 export const getStudents = async (req, res) => {
   try {
     const query = `
-      SELECT 
+      SELECT DISTINCT ON (u.id)
         u.id, 
         u.username, 
         u.correo, 
@@ -21,23 +22,30 @@ export const getStudents = async (req, res) => {
         u.modalidad_ingreso,
         u.ano_formacion,
         u.unidad_educativa_id,
+        EXTRACT(YEAR FROM u.creado_en)::TEXT AS gestion_academica,
         ue.nombre AS unidad_educativa_nombre,
         ade.docente_id AS docente_acompanante_id,
         da.nombre AS da_nombre, 
         da.apellido AS da_apellido,
         u.creado_en 
       FROM usuarios u
+      INNER JOIN gestiones g 
+        ON EXTRACT(YEAR FROM u.creado_en)::TEXT = g.anio 
+       AND g.estado = 'Activa'
       LEFT JOIN unidades_educativas ue ON u.unidad_educativa_id = ue.id
       LEFT JOIN asignaciones_docente_estudiante ade ON u.id = ade.estudiante_id
       LEFT JOIN usuarios da ON ade.docente_id = da.id AND da.rol = 'DOCENTE_ACOMPANANTE'
       WHERE u.rol = 'ESTUDIANTE'
-      ORDER BY u.creado_en DESC
+      ORDER BY u.id, u.creado_en DESC
     `;
     const result = await pool.query(query);
     return res.json(result.rows);
   } catch (error) {
-    console.error("Error al obtener estudiantes:", error);
-    return res.status(500).json({ message: "Error al obtener la lista de estudiantes.", error: error.message });
+    console.error("Error al obtener estudiantes sin duplicados:", error);
+    return res.status(500).json({ 
+      message: "Error al obtener la lista de estudiantes.", 
+      error: error.message 
+    });
   }
 };
 

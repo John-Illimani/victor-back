@@ -65,6 +65,8 @@ import fichaC15anioRoutes from "./routes/routeFichas/5año/fichaC15toAno.routes.
 import fichaC25anioRoutes from "./routes/routeFichas/5año/fichaC25toAno.routes.js";
 import centralizador5anioRoutes from "./routes/routeFichas/5año/centralizador5toAno.routes.js";
 import actaPostergacion5anioRoutes from "./routes/routeFichas/5año/actaPostergacion5toAno.routes.js";
+import gestionesRoutes from "./routes/gestion.routes.js";
+import actasRoutes from "./routes/acta.routes.js";
 
 
 dotenv.config();
@@ -86,14 +88,13 @@ app.use(
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ limit: "100mb", extended: true, parameterLimit: 100000 }));
 
-// 4. Registro de Rutas API (Prefijo /api)
+// 4. Registro de Rutas API 
 app.use("/api", authRoutes);
 app.use("/api", userRoutes);
 app.use("/api", estudiantesRoutes);
 app.use("/api", docenteAcompañanteRoutes);
 app.use("/api", docenteGuiaRoutes);
 app.use("/api", especialidadRoutes);
-
 app.use("/api", fichaRoutes);
 
 // fichas primer año
@@ -157,6 +158,13 @@ app.use("/api", fichaC15anioRoutes);
 app.use("/api", fichaC25anioRoutes);
 app.use("/api", centralizador5anioRoutes);
 app.use("/api", actaPostergacion5anioRoutes);
+
+
+
+app.use("/api", gestionesRoutes);
+app.use("/api", actasRoutes);
+
+
 
 
 

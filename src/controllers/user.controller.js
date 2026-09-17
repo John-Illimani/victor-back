@@ -324,3 +324,82 @@ export const importBatchUsers = async (req, res) => {
     client.release();
   }
 };
+
+// PERFIL: Actualizar datos personales del usuario logueado
+export const updateMyProfile = async (req, res) => {
+  const userId = req.user?.id;
+  const { nombre, apellido, username, telefono } = req.body;
+
+  if (!userId) {
+    return res.status(401).json({ message: "Usuario no autenticado." });
+  }
+
+  if (!nombre || !apellido || !username) {
+    return res.status(400).json({ message: "Nombre, apellido y username son obligatorios." });
+  }
+
+  try {
+    const query = `
+      UPDATE usuarios 
+      SET nombre = $1, apellido = $2, username = $3, telefono = $4
+      WHERE id = $5
+      RETURNING id, username, correo, nombre, apellido, ci, rol, estado, telefono
+    `;
+    const values = [nombre, apellido, username, telefono || null, userId];
+    const result = await pool.query(query, values);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Usuario no encontrado en la base de datos." });
+    }
+
+    return res.json({ 
+      message: "Perfil actualizado correctamente.", 
+      user: result.rows[0] 
+    });
+  } catch (error) {
+    console.error("Error al actualizar perfil del usuario:", error);
+    if (error.code === "23505") {
+      return res.status(400).json({ message: "El nombre de usuario ya está registrado por otra persona." });
+    }
+    return res.status(500).json({ message: "Error interno al actualizar el perfil.", error: error.message });
+  }
+};
+
+// SEGURIDAD: Cambiar contraseña del usuario logueado
+export const changeMyPassword = async (req, res) => {
+  const userId = req.user?.id;
+  const { currentPassword, newPassword } = req.body;
+
+  if (!userId) {
+    return res.status(401).json({ message: "Usuario no autenticado." });
+  }
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ message: "Debe proporcionar la contraseña actual y la nueva contraseña." });
+  }
+
+  try {
+    // 1. Obtener la hash actual
+    const userRes = await pool.query("SELECT password_hash FROM usuarios WHERE id = $1", [userId]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ message: "Usuario no encontrado." });
+    }
+
+    const currentHash = userRes.rows[0].password_hash;
+
+    // 2. Verificar la contraseña actual
+    const isMatch = await bcrypt.compare(currentPassword, currentHash);
+    if (!isMatch) {
+      return res.status(400).json({ message: "La contraseña actual es incorrecta." });
+    }
+
+    // 3. Encriptar y guardar la nueva contraseña
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await pool.query("UPDATE usuarios SET password_hash = $1 WHERE id = $2", [newHash, userId]);
+
+    return res.json({ message: "Contraseña actualizada exitosamente." });
+  } catch (error) {
+    console.error("Error al cambiar contraseña:", error);
+    return res.status(500).json({ message: "Error interno al cambiar la contraseña.", error: error.message });
+  }
+};
