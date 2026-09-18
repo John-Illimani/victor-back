@@ -20,7 +20,8 @@ export const getUsers = async (req, res) => {
         u.item_docente,
         u.unidad_educativa_id,
         ue.nombre AS unidad_educativa_nombre,
-        u.creado_en 
+        u.creado_en,
+        COALESCE(u.formularios_habilitados, '{}'::jsonb) AS formularios_habilitados
       FROM usuarios u
       LEFT JOIN unidades_educativas ue ON u.unidad_educativa_id = ue.id
       ORDER BY u.creado_en DESC
@@ -401,5 +402,127 @@ export const changeMyPassword = async (req, res) => {
   } catch (error) {
     console.error("Error al cambiar contraseña:", error);
     return res.status(500).json({ message: "Error interno al cambiar la contraseña.", error: error.message });
+  }
+};
+
+
+// OBTENER PERFIL: Devuelve los datos del usuario logueado en la sesión activa
+export const getMyProfile = async (req, res) => {
+  const userId = req.user?.id;
+
+  if (!userId) {
+    return res.status(401).json({ message: "Usuario no autenticado." });
+  }
+
+  try {
+    const query = `
+      SELECT 
+        u.id, 
+        u.username, 
+        u.correo, 
+        u.nombre, 
+        u.apellido, 
+        u.ci, 
+        u.telefono,
+        u.rol, 
+        u.estado,
+        u.esfm_ua,
+        u.especialidad,
+        u.item_docente,
+        u.unidad_educativa_id,
+        ue.nombre AS unidad_educativa_nombre,
+        u.creado_en,
+        COALESCE(u.formularios_habilitados, '{}'::jsonb) AS formularios_habilitados
+      FROM usuarios u
+      LEFT JOIN unidades_educativas ue ON u.unidad_educativa_id = ue.id
+      WHERE u.id = $1
+    `;
+    const result = await pool.query(query, [userId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Usuario no encontrado." });
+    }
+
+    return res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Error al obtener perfil del usuario:", error);
+    return res.status(500).json({ 
+      message: "Error al obtener la información del perfil.", 
+      error: error.message 
+    });
+  }
+};
+
+
+
+
+export const getMyStudentProfile = async (req, res) => {
+  const userId = req.user?.id;
+
+  if (!userId) {
+    return res.status(401).json({ message: "Usuario no autenticado." });
+  }
+
+  try {
+    const query = `
+      SELECT 
+        u.id, 
+        u.username, 
+        u.correo, 
+        u.nombre, 
+        u.apellido, 
+        u.ci, 
+        u.telefono,
+        u.rol, 
+        COALESCE(u.estado, 'ACTIVO') AS estado,
+        u.esfm_ua,
+        u.especialidad,
+        u.ano_formacion,
+        ue.nombre AS unidad_educativa_nombre,
+
+        -- Obtiene de forma única al Docente Acompañante ESFM
+        da.id AS docente_acompanante_id,
+        da.nombre AS da_nombre,
+        da.apellido AS da_apellido,
+
+        -- Obtiene de forma única al Docente Guía U.E.
+        dg.id AS docente_guia_id,
+        dg.nombre AS dg_nombre,
+        dg.apellido AS dg_apellido
+
+      FROM usuarios u
+      LEFT JOIN unidades_educativas ue ON u.unidad_educativa_id = ue.id
+
+      -- Subconsulta para Docente Acompañante
+      LEFT JOIN LATERAL (
+        SELECT d.id, d.nombre, d.apellido
+        FROM asignaciones_docente_estudiante ade
+        INNER JOIN usuarios d ON ade.docente_id = d.id
+        WHERE ade.estudiante_id = u.id AND d.rol = 'DOCENTE_ACOMPANANTE'
+        LIMIT 1
+      ) da ON TRUE
+
+      -- Subconsulta para Docente Guía
+      LEFT JOIN LATERAL (
+        SELECT d.id, d.nombre, d.apellido
+        FROM asignaciones_docente_estudiante ade
+        INNER JOIN usuarios d ON ade.docente_id = d.id
+        WHERE ade.estudiante_id = u.id AND d.rol = 'DOCENTE_GUIA'
+        LIMIT 1
+      ) dg ON TRUE
+
+      WHERE u.id = $1::uuid AND u.rol = 'ESTUDIANTE';
+    `;
+
+    const result = await pool.query(query, [userId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Perfil de estudiante no encontrado." });
+    }
+
+    return res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Error al obtener perfil completo del estudiante:", error);
+    return res.status(500).json({ message: "Error al consultar la información del estudiante.", error: error.message });
   }
 };
