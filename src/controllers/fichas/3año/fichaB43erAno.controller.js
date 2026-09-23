@@ -24,7 +24,7 @@ export const getFichaB4_3erAno = async (req, res) => {
   }
 };
 
-// POST - SAVE OR UPDATE (UPSERT) CON MANEJO TRANSACCIONAL
+// POST - SAVE OR UPDATE (UPSERT)
 export const saveOrUpdateFichaB4_3erAno = async (req, res) => {
   const { estudiante_id, datos } = req.body;
 
@@ -38,12 +38,12 @@ export const saveOrUpdateFichaB4_3erAno = async (req, res) => {
 
     const {
       apellidos_nombres = '',
-      ser_1 = 0, ser_2 = 0, ser_3 = 0,
-      saber_1 = 0, saber_2 = 0, saber_3 = 0, saber_4 = 0,
-      hacer_1 = 0, hacer_2 = 0,
-      decidir_1 = 0, decidir_2 = 0,
+      ser = 0,
+      saber = 0,
+      hacer = 0,
+      decidir = 0,
       promedio_numeral = 0,
-      promedio_literal = 'CERO CON 00/100',
+      promedio_literal = 'CERO',
       observaciones = '',
       docente_guia_id = null,
       lugar_ciudad = 'El Alto',
@@ -74,55 +74,69 @@ export const saveOrUpdateFichaB4_3erAno = async (req, res) => {
       query = `
         UPDATE ficha_b4_3er_ano_2026
         SET apellidos_nombres = $1,
-            ser_1 = $2, ser_2 = $3, ser_3 = $4,
-            saber_1 = $5, saber_2 = $6, saber_3 = $7, saber_4 = $8,
-            hacer_1 = $9, hacer_2 = $10,
-            decidir_1 = $11, decidir_2 = $12,
-            promedio_numeral = $13,
-            promedio_literal = $14,
-            observaciones = $15,
-            docente_guia_id = $16::uuid,
-            lugar_ciudad = $17,
-            departamento = $18,
-            dia = $19,
-            mes = $20,
-            ano = $21,
-            estado = $22,
+            ser = $2,
+            saber = $3,
+            hacer = $4,
+            decidir = $5,
+            promedio_numeral = $6,
+            promedio_literal = $7,
+            observaciones = $8,
+            docente_guia_id = $9::uuid,
+            lugar_ciudad = $10,
+            departamento = $11,
+            dia = $12,
+            mes = $13,
+            ano = $14,
+            estado = $15,
             updated_at = CURRENT_TIMESTAMP
-        WHERE estudiante_id = $23::uuid RETURNING *;
+        WHERE estudiante_id = $16::uuid RETURNING *;
       `;
       values = [
         apellidos_nombres,
-        parseNum(ser_1), parseNum(ser_2), parseNum(ser_3),
-        parseNum(saber_1), parseNum(saber_2), parseNum(saber_3), parseNum(saber_4),
-        parseNum(hacer_1), parseNum(hacer_2),
-        parseNum(decidir_1), parseNum(decidir_2),
-        prom, promedio_literal, observaciones, docGuiaId,
-        lugar_ciudad, departamento, dia, mes, String(ano).slice(0, 4),
-        estado, estudiante_id
+        parseNum(ser),
+        parseNum(saber),
+        parseNum(hacer),
+        parseNum(decidir),
+        prom,
+        promedio_literal,
+        observaciones,
+        docGuiaId,
+        lugar_ciudad,
+        departamento,
+        dia,
+        mes,
+        String(ano).slice(0, 4),
+        estado,
+        estudiante_id
       ];
     } else {
       query = `
         INSERT INTO ficha_b4_3er_ano_2026 (
           estudiante_id, apellidos_nombres,
-          ser_1, ser_2, ser_3,
-          saber_1, saber_2, saber_3, saber_4,
-          hacer_1, hacer_2,
-          decidir_1, decidir_2,
+          ser, saber, hacer, decidir,
           promedio_numeral, promedio_literal, observaciones,
           docente_guia_id, lugar_ciudad, departamento, dia, mes, ano, estado
         ) VALUES (
-          $1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::uuid, $18, $19, $20, $21, $22, $23
+          $1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::uuid, $11, $12, $13, $14, $15, $16
         ) RETURNING *;
       `;
       values = [
-        estudiante_id, apellidos_nombres,
-        parseNum(ser_1), parseNum(ser_2), parseNum(ser_3),
-        parseNum(saber_1), parseNum(saber_2), parseNum(saber_3), parseNum(saber_4),
-        parseNum(hacer_1), parseNum(hacer_2),
-        parseNum(decidir_1), parseNum(decidir_2),
-        prom, promedio_literal, observaciones, docGuiaId,
-        lugar_ciudad, departamento, dia, mes, String(ano).slice(0, 4), estado
+        estudiante_id,
+        apellidos_nombres,
+        parseNum(ser),
+        parseNum(saber),
+        parseNum(hacer),
+        parseNum(decidir),
+        prom,
+        promedio_literal,
+        observaciones,
+        docGuiaId,
+        lugar_ciudad,
+        departamento,
+        dia,
+        mes,
+        String(ano).slice(0, 4),
+        estado
       ];
     }
 

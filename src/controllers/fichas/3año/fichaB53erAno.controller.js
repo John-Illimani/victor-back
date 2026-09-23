@@ -42,8 +42,10 @@ export const saveOrUpdateFichaB5_3erAno = async (req, res) => {
       especialidad = '',
       c1 = 0, c2 = 0, c3 = 0, c4 = 0, c5 = 0,
       c6 = 0, c7 = 0, c8 = 0, c9 = 0, c10 = 0,
+      obs_c1 = '', obs_c2 = '', obs_c3 = '', obs_c4 = '', obs_c5 = '',
+      obs_c6 = '', obs_c7 = '', obs_c8 = '', obs_c9 = '', obs_c10 = '',
       puntaje_final = 0,
-      promedio_literal = 'CERO CON 00/100',
+      promedio_literal = 'CERO',
       observaciones = '',
       docente_acompanante_id = null,
       docente_investigacion_id = null,
@@ -80,25 +82,29 @@ export const saveOrUpdateFichaB5_3erAno = async (req, res) => {
             especialidad = $3,
             c1 = $4, c2 = $5, c3 = $6, c4 = $7, c5 = $8,
             c6 = $9, c7 = $10, c8 = $11, c9 = $12, c10 = $13,
-            puntaje_final = $14,
-            promedio_numeral = $14,
-            promedio_literal = $15,
-            observaciones = $16,
-            docente_acompanante_id = $17::uuid,
-            docente_investigacion_id = $18::uuid,
-            lugar_ciudad = $19,
-            departamento = $20,
-            dia = $21,
-            mes = $22,
-            ano = $23,
-            estado = $24,
+            obs_c1 = $14, obs_c2 = $15, obs_c3 = $16, obs_c4 = $17, obs_c5 = $18,
+            obs_c6 = $19, obs_c7 = $20, obs_c8 = $21, obs_c9 = $22, obs_c10 = $23,
+            puntaje_final = $24,
+            promedio_numeral = $24,
+            promedio_literal = $25,
+            observaciones = $26,
+            docente_acompanante_id = $27::uuid,
+            docente_investigacion_id = $28::uuid,
+            lugar_ciudad = $29,
+            departamento = $30,
+            dia = $31,
+            mes = $32,
+            ano = $33,
+            estado = $34,
             updated_at = CURRENT_TIMESTAMP
-        WHERE estudiante_id = $25::uuid RETURNING *;
+        WHERE estudiante_id = $35::uuid RETURNING *;
       `;
       values = [
         apellidos_nombres, esfm_ua, especialidad,
         parseNum(c1), parseNum(c2), parseNum(c3), parseNum(c4), parseNum(c5),
         parseNum(c6), parseNum(c7), parseNum(c8), parseNum(c9), parseNum(c10),
+        obs_c1, obs_c2, obs_c3, obs_c4, obs_c5,
+        obs_c6, obs_c7, obs_c8, obs_c9, obs_c10,
         pf, promedio_literal, observaciones, docAcompId, docInvestId,
         lugar_ciudad, departamento, dia, mes, String(ano).slice(0, 4),
         estado, estudiante_id
@@ -108,17 +114,25 @@ export const saveOrUpdateFichaB5_3erAno = async (req, res) => {
         INSERT INTO ficha_b5_3er_ano_2026 (
           estudiante_id, apellidos_nombres, esfm_ua, especialidad,
           c1, c2, c3, c4, c5, c6, c7, c8, c9, c10,
+          obs_c1, obs_c2, obs_c3, obs_c4, obs_c5,
+          obs_c6, obs_c7, obs_c8, obs_c9, obs_c10,
           puntaje_final, promedio_numeral, promedio_literal, observaciones,
           docente_acompanante_id, docente_investigacion_id, lugar_ciudad,
           departamento, dia, mes, ano, estado
         ) VALUES (
-          $1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15, $16, $17, $18::uuid, $19::uuid, $20, $21, $22, $23, $24, $25
+          $1::uuid, $2, $3, $4,
+          $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+          $15, $16, $17, $18, $19, $20, $21, $22, $23, $24,
+          $25, $25, $26, $27, $28::uuid, $29::uuid, $30,
+          $31, $32, $33, $34, $35
         ) RETURNING *;
       `;
       values = [
         estudiante_id, apellidos_nombres, esfm_ua, especialidad,
         parseNum(c1), parseNum(c2), parseNum(c3), parseNum(c4), parseNum(c5),
         parseNum(c6), parseNum(c7), parseNum(c8), parseNum(c9), parseNum(c10),
+        obs_c1, obs_c2, obs_c3, obs_c4, obs_c5,
+        obs_c6, obs_c7, obs_c8, obs_c9, obs_c10,
         pf, promedio_literal, observaciones, docAcompId, docInvestId,
         lugar_ciudad, departamento, dia, mes, String(ano).slice(0, 4), estado
       ];

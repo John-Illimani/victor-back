@@ -67,6 +67,7 @@ import centralizador5anioRoutes from "./routes/routeFichas/5año/centralizador5t
 import actaPostergacion5anioRoutes from "./routes/routeFichas/5año/actaPostergacion5toAno.routes.js";
 import gestionesRoutes from "./routes/gestion.routes.js";
 import actasRoutes from "./routes/acta.routes.js";
+import blockchainRoutes from "./routes/blockchain.routes.js";
 
 
 dotenv.config();
@@ -163,6 +164,12 @@ app.use("/api", actaPostergacion5anioRoutes);
 
 app.use("/api", gestionesRoutes);
 app.use("/api", actasRoutes);
+
+
+// rutas para blockchain 
+
+app.use("/api", blockchainRoutes);
+
 
 
 

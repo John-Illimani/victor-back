@@ -1,6 +1,6 @@
 import { pool } from "../../../database/database.js";
 
-// GET - OBTENER ACTA DE INICIO 3ER AÑO
+// GET - OBTENER ACTA DE INICIO 3ER AÑO CON NOMBRES DE DOCENTES
 export const getActaInicio_3erAno = async (req, res) => {
   const { estudiante_id } = req.params;
 
@@ -17,7 +17,36 @@ export const getActaInicio_3erAno = async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(200).json({ existe: false, datos: {} });
     }
-    return res.status(200).json({ existe: true, datos: result.rows[0] });
+
+    const acta = result.rows[0];
+
+    // Resolver nombre del Docente Guía
+    if (acta.docente_guia_id) {
+      try {
+        const docRes = await pool.query(`SELECT * FROM docentes WHERE id = $1::uuid`, [acta.docente_guia_id]);
+        if (docRes.rowCount > 0) {
+          const d = docRes.rows[0];
+          acta.docente_guia_nombre = d.apellidos_nombres || d.nombres_apellidos || `${d.nombre || ''} ${d.apellido || ''}`.trim();
+        }
+      } catch (e) {
+        console.warn("No se pudo resolver el nombre del docente guía:", e.message);
+      }
+    }
+
+    // Resolver nombre del Docente Acompañante
+    if (acta.docente_acompanante_id) {
+      try {
+        const docRes = await pool.query(`SELECT * FROM docentes WHERE id = $1::uuid`, [acta.docente_acompanante_id]);
+        if (docRes.rowCount > 0) {
+          const d = docRes.rows[0];
+          acta.docente_acompanante_nombre = d.apellidos_nombres || d.nombres_apellidos || `${d.nombre || ''} ${d.apellido || ''}`.trim();
+        }
+      } catch (e) {
+        console.warn("No se pudo resolver el nombre del docente acompañante:", e.message);
+      }
+    }
+
+    return res.status(200).json({ existe: true, datos: acta });
   } catch (error) {
     console.error("Error GET Acta Inicio 3er Año:", error);
     return res.status(500).json({ message: "Error al consultar la base de datos.", error: error.message });

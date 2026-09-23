@@ -38,7 +38,6 @@ export const saveOrUpdateFichaB2_4toAno = async (req, res) => {
 
     const {
       apellidos_nombres = '',
-      columnas_pdc = ['PDC 1', 'PDC 2', 'PDC 3', 'PDC 4', 'PDC 5'],
       calificaciones = {},
       promedios_pdc = {},
       promedio_numeral = 0,
@@ -66,41 +65,39 @@ export const saveOrUpdateFichaB2_4toAno = async (req, res) => {
       query = `
         UPDATE ficha_b2_4to_ano_2026
         SET apellidos_nombres = $1,
-            columnas_pdc = $2::jsonb,
-            calificaciones = $3::jsonb,
-            promedios_pdc = $4::jsonb,
-            promedio_numeral = $5,
-            promedio_literal = $6,
-            observaciones = $7,
-            lugar_ciudad = $8,
-            departamento = $9,
-            dia = $10,
-            mes = $11,
-            ano = $12,
-            estado = $13,
+            calificaciones = $2::jsonb,
+            promedios_pdc = $3::jsonb,
+            promedio_numeral = $4,
+            promedio_literal = $5,
+            observaciones = $6,
+            lugar_ciudad = $7,
+            departamento = $8,
+            dia = $9,
+            mes = $10,
+            ano = $11,
+            estado = $12,
             updated_at = CURRENT_TIMESTAMP
-        WHERE estudiante_id = $14::uuid RETURNING *;
+        WHERE estudiante_id = $13::uuid RETURNING *;
       `;
       values = [
-        apellidos_nombres, JSON.stringify(columnas_pdc), JSON.stringify(calificaciones),
-        JSON.stringify(promedios_pdc), prom, promedio_literal, observaciones,
-        lugar_ciudad, departamento, dia, mes, String(ano).slice(0, 4),
-        estado, estudiante_id
+        apellidos_nombres, JSON.stringify(calificaciones), JSON.stringify(promedios_pdc),
+        prom, promedio_literal, observaciones, lugar_ciudad, departamento,
+        dia, mes, String(ano).slice(0, 4), estado, estudiante_id
       ];
     } else {
       query = `
         INSERT INTO ficha_b2_4to_ano_2026 (
-          estudiante_id, apellidos_nombres, columnas_pdc, calificaciones, promedios_pdc,
-          promedio_numeral, promedio_literal, observaciones, lugar_ciudad, departamento,
-          dia, mes, ano, estado
+          estudiante_id, apellidos_nombres, calificaciones, promedios_pdc,
+          promedio_numeral, promedio_literal, observaciones, lugar_ciudad,
+          departamento, dia, mes, ano, estado
         ) VALUES (
-          $1::uuid, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13, $14
+          $1::uuid, $2, $3::jsonb, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12, $13
         ) RETURNING *;
       `;
       values = [
-        estudiante_id, apellidos_nombres, JSON.stringify(columnas_pdc), JSON.stringify(calificaciones),
-        JSON.stringify(promedios_pdc), prom, promedio_literal, observaciones,
-        lugar_ciudad, departamento, dia, mes, String(ano).slice(0, 4), estado
+        estudiante_id, apellidos_nombres, JSON.stringify(calificaciones), JSON.stringify(promedios_pdc),
+        prom, promedio_literal, observaciones, lugar_ciudad, departamento,
+        dia, mes, String(ano).slice(0, 4), estado
       ];
     }
 
