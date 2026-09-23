@@ -168,7 +168,7 @@ app.use("/api", actasRoutes);
 
 // rutas para blockchain 
 
-app.use("/api", blockchainRoutes);
+app.use("/api/blockchain", blockchainRoutes);
 
 
 

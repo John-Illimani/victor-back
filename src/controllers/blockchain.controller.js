@@ -1,8 +1,113 @@
 import { pool } from "../database/database.js";
 import { blockchainService } from "../blockchain/services/blockchain.service.js";
-import { generarHashCentralizador5toAno } from "../blockchain/utils/hash.util.js";
 
-// POST - CERTIFICAR CENTRALIZADOR DE 5TO AÑO CON VERIFICACIÓN PREVIA
+// IMPORTACIÓN DE UTILITARIOS DE HASH POR AÑO
+import { generarHashCentralizador4toAno } from "../blockchain/utils/4año/hash.util.js";
+import { generarHashCentralizador5toAno } from "../blockchain/utils/5año/hash.util.js";
+import { generarHashCentralizador3erAno } from "../blockchain/utils/3año/hash.util.js";
+import { generarHashCentralizador2doAno } from "../blockchain/utils/2año/hash.util.js";
+import { generarHashCentralizador1erAno } from "../blockchain/utils/1año/hash.util.js";
+
+
+// =========================================================================
+// 1. POST - CERTIFICAR CENTRALIZADOR DE 4TO AÑO
+// =========================================================================
+export const certificarCentralizador4toAno = async (req, res) => {
+  const { estudiante_id } = req.body;
+
+  if (!estudiante_id) {
+    return res.status(400).json({ message: "Se requiere un ID de estudiante válido." });
+  }
+
+  try {
+    // 1. Obtener datos del Centralizador de 4to Año
+    const resCentral = await pool.query(
+      `SELECT * FROM centralizador_4to_ano_2026 WHERE estudiante_id = $1::uuid LIMIT 1`,
+      [estudiante_id]
+    );
+
+    if (resCentral.rowCount === 0) {
+      return res.status(404).json({ message: "No se encontraron datos del centralizador de 4to año para certificar." });
+    }
+
+    const datosCentral = resCentral.rows[0];
+
+    // 2. Generar Hash Criptográfico Local de 4to Año
+    const hashLocal = generarHashCentralizador4toAno(datosCentral);
+
+    // 3. Verificación Previa Local en BD
+    const checkExistente = await pool.query(
+      `SELECT * FROM certificaciones_blockchain WHERE hash_local = $1 ORDER BY fecha_registro DESC LIMIT 1`,
+      [hashLocal]
+    );
+
+    if (checkExistente.rows.length > 0) {
+      const reg = checkExistente.rows[0];
+      return res.status(200).json({
+        success: true,
+        yaExistia: true,
+        message: "El Centralizador de 4to Año cuenta con certificación vigente sin cambios detectados.",
+        hash_local: reg.hash_local,
+        tx_hash: reg.tx_hash,
+        registroLocal: reg
+      });
+    }
+
+    // 4. Nombre Completo
+    let nombreCompleto = datosCentral.integrante_ectg;
+    if (!nombreCompleto) {
+      const resUser = await pool.query(
+        `SELECT nombre, apellido FROM usuarios WHERE id = $1::uuid LIMIT 1`,
+        [estudiante_id]
+      );
+      if (resUser.rows.length > 0) {
+        const u = resUser.rows[0];
+        nombreCompleto = `${u.nombre || ''} ${u.apellido || ''}`.trim();
+      }
+    }
+
+    // 5. Minado/Registro Web3 en Ethereum Sepolia
+    const resultadoWeb3 = await blockchainService.registrarEnBlockchain(hashLocal, estudiante_id);
+    let txHashSeguro = resultadoWeb3.txHash || `REGISTERED_ON_CHAIN_${hashLocal.substring(0, 18)}`;
+
+    // 6. Insertar en Certificaciones
+    const queryInsert = `
+      INSERT INTO certificaciones_blockchain (
+        estudiante_id,
+        nombre_estudiante,
+        hash_local,
+        tx_hash
+      ) VALUES ($1::uuid, $2, $3, $4)
+      RETURNING *;
+    `;
+
+    const dbResult = await pool.query(queryInsert, [
+      estudiante_id,
+      (nombreCompleto || "ESTUDIANTE 4TO AÑO").toUpperCase(),
+      hashLocal,
+      txHashSeguro
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      yaExistia: false,
+      message: "Se ha certificado de forma inmutable el Centralizador de 4to Año.",
+      hash_local: hashLocal,
+      tx_hash: txHashSeguro,
+      registroLocal: dbResult.rows[0]
+    });
+
+  } catch (error) {
+    console.error("Error en certificarCentralizador4toAno:", error);
+    return res.status(500).json({ 
+      message: error.message || "Error al certificar el centralizador de 4to año en Blockchain." 
+    });
+  }
+};
+
+// =========================================================================
+// 2. POST - CERTIFICAR CENTRALIZADOR DE 5TO AÑO CON VERIFICACIÓN PREVIA LOCAL
+// =========================================================================
 export const certificarCentralizador5toAno = async (req, res) => {
   const { estudiante_id } = req.body;
 
@@ -23,28 +128,29 @@ export const certificarCentralizador5toAno = async (req, res) => {
 
     const datosCentral = resCentral.rows[0];
 
-    // 2. Generar Hash Criptográfico Local (SHA-256)
+    // 2. Generar Hash Criptográfico Local (SHA-256) de 5to Año
     const hashLocal = generarHashCentralizador5toAno(datosCentral);
 
-    // 3. VERIFICACIÓN PREVIA: Consultar si el hash o estudiante ya existe registrado en la BD Local
+    // 3. VERIFICACIÓN PREVIA LOCAL: Consultar SI EL HASH EXACTO ya existe en la BD
     const checkExistente = await pool.query(
-      `SELECT * FROM certificaciones_blockchain WHERE hash_local = $1 OR estudiante_id = $2::uuid LIMIT 1`,
-      [hashLocal, estudiante_id]
+      `SELECT * FROM certificaciones_blockchain WHERE hash_local = $1 ORDER BY fecha_registro DESC LIMIT 1`,
+      [hashLocal]
     );
 
+    // SI NO HAY CAMBIOS: Se reutiliza el registro y TX Hash original
     if (checkExistente.rows.length > 0) {
       const reg = checkExistente.rows[0];
       return res.status(200).json({
         success: true,
         yaExistia: true,
-        message: "El Centralizador ya fue certificado previamente en la red Blockchain.",
+        message: "El documento cuenta con certificación inmutable vigente sin cambios detectados.",
         hash_local: reg.hash_local,
         tx_hash: reg.tx_hash,
         registroLocal: reg
       });
     }
 
-    // 4. Obtener Nombre del Estudiante desde la tabla usuarios
+    // SI HUBIERON CAMBIOS O ES PRIMERA VEZ: Se procede a una nueva emisión
     const resUser = await pool.query(
       `SELECT nombre, apellido FROM usuarios WHERE id = $1::uuid LIMIT 1`,
       [estudiante_id]
@@ -56,12 +162,12 @@ export const certificarCentralizador5toAno = async (req, res) => {
       nombreCompleto = `${u.nombre || ''} ${u.apellido || ''}`.trim();
     }
 
-    // 5. Si no existe, registrar en Ethereum Sepolia
+    // 4. Registrar en Ethereum Sepolia la nueva versión
     const resultadoWeb3 = await blockchainService.registrarEnBlockchain(hashLocal, estudiante_id);
 
     let txHashSeguro = resultadoWeb3.txHash || `REGISTERED_ON_CHAIN_${hashLocal.substring(0, 18)}`;
 
-    // 6. Guardar en la base de datos local
+    // 5. Guardar la nueva certificación vinculada al nuevo hash local
     const queryInsert = `
       INSERT INTO certificaciones_blockchain (
         estudiante_id,
@@ -82,7 +188,7 @@ export const certificarCentralizador5toAno = async (req, res) => {
     return res.status(200).json({
       success: true,
       yaExistia: false,
-      message: "Centralizador de 5to Año certificado e inmutable en Blockchain.",
+      message: "Se ha certificado de forma inmutable una nueva versión del Centralizador por modificación de datos.",
       hash_local: hashLocal,
       tx_hash: txHashSeguro,
       registroLocal: dbResult.rows[0]
@@ -96,7 +202,9 @@ export const certificarCentralizador5toAno = async (req, res) => {
   }
 };
 
-// GET - VERIFICACIÓN PÚBLICA DE CERTIFICACIÓN POR HASH O ESTUDIANTE_ID
+// =========================================================================
+// 3. GET - VERIFICACIÓN PÚBLICA DE CERTIFICACIÓN POR HASH O ESTUDIANTE_ID
+// =========================================================================
 export const verificarCertificacionPublica = async (req, res) => {
   try {
     const { hash } = req.query;
@@ -107,7 +215,6 @@ export const verificarCertificacionPublica = async (req, res) => {
 
     const hashLimpio = hash.trim();
 
-    // 1. Consulta en la Base de Datos Local por hash_local, tx_hash o estudiante_id
     const queryBD = `
       SELECT 
         cb.hash_local,
@@ -143,7 +250,6 @@ export const verificarCertificacionPublica = async (req, res) => {
       });
     }
 
-    // 2. Consulta de respaldo directa en la red Ethereum Sepolia
     const verificacionWeb3 = await blockchainService.verificarEnBlockchain(hashLimpio);
 
     if (verificacionWeb3.esValido) {
@@ -169,5 +275,304 @@ export const verificarCertificacionPublica = async (req, res) => {
   } catch (error) {
     console.error("Error en verificarCertificacionPublica:", error);
     return res.status(500).json({ message: error.message });
+  }
+};
+
+
+
+// =========================================================================
+// POST - CERTIFICAR CENTRALIZADOR DE 3ER AÑO
+// =========================================================================
+export const certificarCentralizador3erAno = async (req, res) => {
+  const { estudiante_id } = req.body;
+
+  if (!estudiante_id) {
+    return res.status(400).json({ message: "Se requiere un ID de estudiante válido." });
+  }
+
+  try {
+    // 1. Consultar datos de la tabla de 3er año
+    const resCentral = await pool.query(
+      `SELECT * FROM centralizador_3er_ano_2026 WHERE estudiante_id = $1::uuid LIMIT 1`,
+      [estudiante_id]
+    );
+
+    if (resCentral.rowCount === 0) {
+      return res.status(404).json({ message: "No se encontraron datos del centralizador de 3er año para certificar." });
+    }
+
+    const datosCentral = resCentral.rows[0];
+
+    // 2. Generar Hash Criptográfico
+    const hashLocal = generarHashCentralizador3erAno(datosCentral);
+
+    // 3. Verificar si el Hash local ya existe
+    const checkExistente = await pool.query(
+      `SELECT * FROM certificaciones_blockchain WHERE hash_local = $1 ORDER BY fecha_registro DESC LIMIT 1`,
+      [hashLocal]
+    );
+
+    if (checkExistente.rows.length > 0) {
+      const reg = checkExistente.rows[0];
+      return res.status(200).json({
+        success: true,
+        yaExistia: true,
+        message: "El Centralizador de 3er Año cuenta con certificación vigente sin cambios detectados.",
+        hash_local: reg.hash_local,
+        tx_hash: reg.tx_hash,
+        registroLocal: reg
+      });
+    }
+
+    // 4. Obtener nombre completo
+    let nombreCompleto = datosCentral.apellidos_nombres;
+    if (!nombreCompleto) {
+      const resUser = await pool.query(
+        `SELECT nombre, apellido FROM usuarios WHERE id = $1::uuid LIMIT 1`,
+        [estudiante_id]
+      );
+      if (resUser.rows.length > 0) {
+        const u = resUser.rows[0];
+        nombreCompleto = `${u.nombre || ''} ${u.apellido || ''}`.trim();
+      }
+    }
+
+    // 5. Minado/Registro Web3 en Ethereum Sepolia
+    const resultadoWeb3 = await blockchainService.registrarEnBlockchain(hashLocal, estudiante_id);
+    let txHashSeguro = resultadoWeb3.txHash || `REGISTERED_ON_CHAIN_${hashLocal.substring(0, 18)}`;
+
+    // 6. Guardar la nueva certificación
+    const queryInsert = `
+      INSERT INTO certificaciones_blockchain (
+        estudiante_id,
+        nombre_estudiante,
+        hash_local,
+        tx_hash
+      ) VALUES ($1::uuid, $2, $3, $4)
+      RETURNING *;
+    `;
+
+    const dbResult = await pool.query(queryInsert, [
+      estudiante_id,
+      (nombreCompleto || "ESTUDIANTE 3ER AÑO").toUpperCase(),
+      hashLocal,
+      txHashSeguro
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      yaExistia: false,
+      message: "Se ha certificado de forma inmutable el Centralizador de 3er Año.",
+      hash_local: hashLocal,
+      tx_hash: txHashSeguro,
+      registroLocal: dbResult.rows[0]
+    });
+
+  } catch (error) {
+    console.error("Error en certificarCentralizador3erAno:", error);
+    return res.status(500).json({ 
+      message: error.message || "Error al certificar el centralizador de 3er año en Blockchain." 
+    });
+  }
+};
+
+
+
+
+
+// =========================================================================
+// POST - CERTIFICAR CENTRALIZADOR DE 2DO AÑO
+// =========================================================================
+export const certificarCentralizador2doAno = async (req, res) => {
+  const { estudiante_id } = req.body;
+
+  if (!estudiante_id) {
+    return res.status(400).json({ message: "Se requiere un ID de estudiante válido." });
+  }
+
+  try {
+    // 1. Obtener registro de 2do Año
+    const resCentral = await pool.query(
+      `SELECT * FROM centralizador_2do_ano_2026 WHERE estudiante_id = $1::uuid LIMIT 1`,
+      [estudiante_id]
+    );
+
+    if (resCentral.rowCount === 0) {
+      return res.status(404).json({ message: "No se encontraron datos del centralizador de 2do año para certificar." });
+    }
+
+    const datosCentral = resCentral.rows[0];
+
+    // 2. Generar Hash Local
+    const hashLocal = generarHashCentralizador2doAno(datosCentral);
+
+    // 3. Verificación Previa Local
+    const checkExistente = await pool.query(
+      `SELECT * FROM certificaciones_blockchain WHERE hash_local = $1 ORDER BY fecha_registro DESC LIMIT 1`,
+      [hashLocal]
+    );
+
+    if (checkExistente.rows.length > 0) {
+      const reg = checkExistente.rows[0];
+      return res.status(200).json({
+        success: true,
+        yaExistia: true,
+        message: "El Centralizador de 2do Año cuenta con certificación vigente sin cambios detectados.",
+        hash_local: reg.hash_local,
+        tx_hash: reg.tx_hash,
+        registroLocal: reg
+      });
+    }
+
+    // 4. Obtener nombre del estudiante
+    let nombreCompleto = datosCentral.apellidos_nombres;
+    if (!nombreCompleto) {
+      const resUser = await pool.query(
+        `SELECT nombre, apellido FROM usuarios WHERE id = $1::uuid LIMIT 1`,
+        [estudiante_id]
+      );
+      if (resUser.rows.length > 0) {
+        const u = resUser.rows[0];
+        nombreCompleto = `${u.nombre || ''} ${u.apellido || ''}`.trim();
+      }
+    }
+
+    // 5. Minado/Registro Web3 en Blockchain
+    const resultadoWeb3 = await blockchainService.registrarEnBlockchain(hashLocal, estudiante_id);
+    let txHashSeguro = resultadoWeb3.txHash || `REGISTERED_ON_CHAIN_${hashLocal.substring(0, 18)}`;
+
+    // 6. Guardar Certificación
+    const queryInsert = `
+      INSERT INTO certificaciones_blockchain (
+        estudiante_id,
+        nombre_estudiante,
+        hash_local,
+        tx_hash
+      ) VALUES ($1::uuid, $2, $3, $4)
+      RETURNING *;
+    `;
+
+    const dbResult = await pool.query(queryInsert, [
+      estudiante_id,
+      (nombreCompleto || "ESTUDIANTE 2DO AÑO").toUpperCase(),
+      hashLocal,
+      txHashSeguro
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      yaExistia: false,
+      message: "Se ha certificado de forma inmutable el Centralizador de 2do Año.",
+      hash_local: hashLocal,
+      tx_hash: txHashSeguro,
+      registroLocal: dbResult.rows[0]
+    });
+
+  } catch (error) {
+    console.error("Error en certificarCentralizador2doAno:", error);
+    return res.status(500).json({ 
+      message: error.message || "Error al certificar el centralizador de 2do año en Blockchain." 
+    });
+  }
+};
+
+
+
+
+
+
+// =========================================================================
+// POST - CERTIFICAR CENTRALIZADOR DE 1ER AÑO
+// =========================================================================
+export const certificarCentralizador1erAno = async (req, res) => {
+  const { estudiante_id } = req.body;
+
+  if (!estudiante_id) {
+    return res.status(400).json({ message: "Se requiere un ID de estudiante válido." });
+  }
+
+  try {
+    // 1. Obtener datos del Centralizador de 1er Año
+    const resCentral = await pool.query(
+      `SELECT * FROM centralizador_1er_ano_2026 WHERE estudiante_id = $1::uuid LIMIT 1`,
+      [estudiante_id]
+    );
+
+    if (resCentral.rowCount === 0) {
+      return res.status(404).json({ message: "No se encontraron datos del centralizador de 1er año para certificar." });
+    }
+
+    const datosCentral = resCentral.rows[0];
+
+    // 2. Generar Hash Criptográfico Local de 1er Año
+    const hashLocal = generarHashCentralizador1erAno(datosCentral);
+
+    // 3. Verificación Previa Local en BD
+    const checkExistente = await pool.query(
+      `SELECT * FROM certificaciones_blockchain WHERE hash_local = $1 ORDER BY fecha_registro DESC LIMIT 1`,
+      [hashLocal]
+    );
+
+    if (checkExistente.rows.length > 0) {
+      const reg = checkExistente.rows[0];
+      return res.status(200).json({
+        success: true,
+        yaExistia: true,
+        message: "El Centralizador de 1er Año cuenta con certificación vigente sin cambios detectados.",
+        hash_local: reg.hash_local,
+        tx_hash: reg.tx_hash,
+        registroLocal: reg
+      });
+    }
+
+    // 4. Obtener nombre del estudiante
+    let nombreCompleto = datosCentral.apellidos_nombres;
+    if (!nombreCompleto) {
+      const resUser = await pool.query(
+        `SELECT nombre, apellido FROM usuarios WHERE id = $1::uuid LIMIT 1`,
+        [estudiante_id]
+      );
+      if (resUser.rows.length > 0) {
+        const u = resUser.rows[0];
+        nombreCompleto = `${u.nombre || ''} ${u.apellido || ''}`.trim();
+      }
+    }
+
+    // 5. Minado/Registro Web3 en Ethereum Sepolia
+    const resultadoWeb3 = await blockchainService.registrarEnBlockchain(hashLocal, estudiante_id);
+    let txHashSeguro = resultadoWeb3.txHash || `REGISTERED_ON_CHAIN_${hashLocal.substring(0, 18)}`;
+
+    // 6. Guardar la certificación
+    const queryInsert = `
+      INSERT INTO certificaciones_blockchain (
+        estudiante_id,
+        nombre_estudiante,
+        hash_local,
+        tx_hash
+      ) VALUES ($1::uuid, $2, $3, $4)
+      RETURNING *;
+    `;
+
+    const dbResult = await pool.query(queryInsert, [
+      estudiante_id,
+      (nombreCompleto || "ESTUDIANTE 1ER AÑO").toUpperCase(),
+      hashLocal,
+      txHashSeguro
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      yaExistia: false,
+      message: "Se ha certificado de forma inmutable el Centralizador de 1er Año.",
+      hash_local: hashLocal,
+      tx_hash: txHashSeguro,
+      registroLocal: dbResult.rows[0]
+    });
+
+  } catch (error) {
+    console.error("Error en certificarCentralizador1erAno:", error);
+    return res.status(500).json({ 
+      message: error.message || "Error al certificar el centralizador de 1er año en Blockchain." 
+    });
   }
 };

@@ -1,15 +1,25 @@
 import { Router } from "express";
 import {
+  certificarCentralizador4toAno,
   certificarCentralizador5toAno,
-  verificarCertificacionPublica
+  verificarCertificacionPublica,
+  certificarCentralizador3erAno,
+  certificarCentralizador2doAno,
+  certificarCentralizador1erAno
 } from "../controllers/blockchain.controller.js";
 
 const router = Router();
 
-// POST: Certificar el centralizador de 5to Año
+router.post("/certificar-1er-ano", certificarCentralizador1erAno);
+
+router.post("/certificar-2do-ano", certificarCentralizador2doAno);
+
+router.post("/certificar-3er-ano", certificarCentralizador3erAno);
+
+router.post("/certificar-4to-ano", certificarCentralizador4toAno);
+
 router.post("/certificar-5to-ano", certificarCentralizador5toAno);
 
-// GET: Verificación pública por QR o código Hash
 router.get("/verificar", verificarCertificacionPublica);
 
 export default router;
